@@ -4,7 +4,7 @@ import { useStore } from '../store';
 import { Eye, EyeOff } from 'lucide-react';
 
 function Login() {
-  const { login, loginAnonymously, auth } = useStore();
+  const { login, auth } = useStore();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,11 +16,6 @@ function Login() {
     if (!auth.error) {
       navigate('/');
     }
-  };
-
-  const handleAnonymousAccess = () => {
-    loginAnonymously();
-    navigate('/');
   };
 
   return (
@@ -109,21 +104,13 @@ function Login() {
               </div>
             </div>
 
-            <div className="space-y-3">
+            <div>
               <button
                 type="submit"
                 disabled={auth.loading}
                 className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
               >
                 {auth.loading ? 'Entrando...' : 'Entrar'}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleAnonymousAccess}
-                className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              >
-                Acessar como visitante
               </button>
             </div>
           </form>

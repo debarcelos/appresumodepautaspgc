@@ -1,169 +1,143 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useStore } from '../store';
-import { Plus, Trash2, AlignLeft, AlignCenter, AlignRight, Loader2 } from 'lucide-react';
-import RichTextEditor from '../components/RichTextEditor';
+import { User } from '../types';
+
+const defaultHeader = `
+<div style="text-align: center; margin-bottom: 20px;">
+  <p style="font-family: Arial; font-size: 12pt; font-weight: bold; margin: 5px 0;">
+    MINISTÉRIO PÚBLICO DE CONTAS DO ESTADO DE GOIÁS
+  </p>
+  <p style="font-family: Arial; font-size: 10pt; margin: 5px 0;">
+    Controle Externo da Administração Pública Estadual
+  </p>
+</div>`;
 
 function Settings() {
-  const {
-    user,
-    sessionTypes,
-    documentConfig,
-    loadInitialData,
-    isLoading: storeLoading,
-    error: storeError,
-    updateUser,
-    addSessionType,
-    removeSessionType,
-    updateDocumentConfig
-  } = useStore();
+  const { documentConfig, updateDocumentConfig, user, updateUser } = useStore();
+  const [loading, setLoading] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
-  useEffect(() => {
-    loadInitialData().catch(console.error);
-  }, [loadInitialData]);
-
-  const [newSessionType, setNewSessionType] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  if (storeLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
-      </div>
-    );
-  }
-
-  if (storeError) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">Erro ao carregar dados: {storeError}</p>
-        <button
-          onClick={() => window.location.reload()}
-          className="mt-2 text-sm text-red-600 hover:text-red-800"
-        >
-          Tentar novamente
-        </button>
-      </div>
-    );
-  }
-
-  const handleUserUpdate = (e: React.FormEvent) => {
-    e.preventDefault();
-    const form = e.target as HTMLFormElement;
-    const formData = new FormData(form);
-    
-    updateUser({
-      name: formData.get('name') as string,
-      email: formData.get('email') as string,
-      role: formData.get('role') as string,
-      registration: formData.get('registration') as string,
+  const handleHeaderContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    updateDocumentConfig({
+      ...documentConfig,
+      header: {
+        ...documentConfig.header,
+        content: e.target.value
+      }
     });
   };
 
-  const handleAddSessionType = (e: React.FormEvent) => {
+  const handleHeaderAlignmentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    updateDocumentConfig({
+      ...documentConfig,
+      header: {
+        ...documentConfig.header,
+        alignment: e.target.value as 'left' | 'center' | 'right'
+      }
+    });
+  };
+
+  const handleUserUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (newSessionType.trim()) {
-      addSessionType(newSessionType.trim());
-      setNewSessionType('');
+    setLoading(true);
+    
+    try {
+      const formData = new FormData(e.currentTarget);
+      const updatedUser: Partial<User> = {
+        name: formData.get('name') as string,
+        email: formData.get('email') as string,
+        role: formData.get('role') as string,
+        registration: formData.get('registration') as string,
+      };
+
+      // Manter o id e token do usuário atual
+      if (user) {
+        updatedUser.id = user.id;
+        updatedUser.token = user.token;
+      }
+
+      updateUser(updatedUser as User);
+      setSuccessMessage('Perfil atualizado com sucesso!');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (err) {
+      console.error('Erro ao atualizar perfil:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleHeaderContentChange = (content: string) => {
+  const resetToDefault = () => {
     updateDocumentConfig({
+      ...documentConfig,
       header: {
-        ...documentConfig.header,
-        content,
-      },
-    });
-  };
-
-  const handleFooterContentChange = (content: string) => {
-    updateDocumentConfig({
-      footer: {
-        ...documentConfig.footer,
-        content,
-      },
-    });
-  };
-
-  const handleHeaderAlignmentChange = (alignment: 'left' | 'center' | 'right') => {
-    updateDocumentConfig({
-      header: {
-        ...documentConfig.header,
-        alignment,
-      },
-    });
-  };
-
-  const handleFooterAlignmentChange = (alignment: 'left' | 'center' | 'right') => {
-    updateDocumentConfig({
-      footer: {
-        ...documentConfig.footer,
-        alignment,
-      },
+        content: defaultHeader,
+        alignment: 'center'
+      }
     });
   };
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Configurações</h2>
-      </div>
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="text-2xl font-bold mb-6">Configurações</h1>
 
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h3 className="text-lg font-medium leading-6 text-gray-900">Dados do Usuário</h3>
-          <form onSubmit={handleUserUpdate} className="mt-5 space-y-4">
+      {successMessage && (
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4">
+          {successMessage}
+        </div>
+      )}
+
+      <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+        <h2 className="text-xl font-semibold mb-4">Perfil do Usuário</h2>
+        
+        <form onSubmit={handleUserUpdate}>
+          <div className="grid grid-cols-1 gap-6">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Nome
               </label>
               <input
                 type="text"
                 name="name"
-                id="name"
-                defaultValue={user.name}
+                defaultValue={user?.name}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                 required
               />
             </div>
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 E-mail
               </label>
               <input
                 type="email"
                 name="email"
-                id="email"
-                defaultValue={user.email}
+                defaultValue={user?.email}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                 required
               />
             </div>
 
             <div>
-              <label htmlFor="role" className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Cargo
               </label>
               <input
                 type="text"
                 name="role"
-                id="role"
-                defaultValue={user.role}
+                defaultValue={user?.role}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                 required
               />
             </div>
 
             <div>
-              <label htmlFor="registration" className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Matrícula
               </label>
               <input
                 type="text"
                 name="registration"
-                id="registration"
-                defaultValue={user.registration}
+                defaultValue={user?.registration}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                 required
               />
@@ -172,152 +146,63 @@ function Settings() {
             <div>
               <button
                 type="submit"
-                className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                disabled={loading}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
               >
-                Salvar
+                {loading ? 'Salvando...' : 'Salvar Alterações'}
               </button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h3 className="text-lg font-medium leading-6 text-gray-900">Tipos de Sessão</h3>
-          <form onSubmit={handleAddSessionType} className="mt-5">
-            <div className="flex gap-4">
-              <input
-                type="text"
-                value={newSessionType}
-                onChange={(e) => setNewSessionType(e.target.value)}
-                placeholder="Nome do tipo de sessão"
-                className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-              />
-              <button
-                type="submit"
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Adicionar
-              </button>
-            </div>
-          </form>
-
-          <ul className="mt-4 divide-y divide-gray-200">
-            {sessionTypes.map((type) => (
-              <li key={type} className="py-3 flex justify-between items-center">
-                <span className="text-sm text-gray-900">{type}</span>
-                <button
-                  onClick={() => removeSessionType(type)}
-                  className="text-red-600 hover:text-red-900"
-                  title="Remover tipo de sessão"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      <div className="bg-white shadow sm:rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <h3 className="text-lg font-medium leading-6 text-gray-900">Cabeçalho e Rodapé dos Documentos</h3>
-          <div className="mt-5 space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Cabeçalho
-              </label>
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleHeaderAlignmentChange('left')}
-                    className={`p-2 rounded ${
-                      documentConfig.header.alignment === 'left'
-                        ? 'bg-indigo-100 text-indigo-700'
-                        : 'bg-gray-100 text-gray-700'
-                    }`}
-                    title="Alinhar à esquerda"
-                  >
-                    <AlignLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleHeaderAlignmentChange('center')}
-                    className={`p-2 rounded ${
-                      documentConfig.header.alignment === 'center'
-                        ? 'bg-indigo-100 text-indigo-700'
-                        : 'bg-gray-100 text-gray-700'
-                    }`}
-                    title="Centralizar"
-                  >
-                    <AlignCenter className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleHeaderAlignmentChange('right')}
-                    className={`p-2 rounded ${
-                      documentConfig.header.alignment === 'right'
-                        ? 'bg-indigo-100 text-indigo-700'
-                        : 'bg-gray-100 text-gray-700'
-                    }`}
-                    title="Alinhar à direita"
-                  >
-                    <AlignRight className="w-4 h-4" />
-                  </button>
-                </div>
-                <RichTextEditor
-                  content={documentConfig.header.content}
-                  onChange={handleHeaderContentChange}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Rodapé
-              </label>
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleFooterAlignmentChange('left')}
-                    className={`p-2 rounded ${
-                      documentConfig.footer.alignment === 'left'
-                        ? 'bg-indigo-100 text-indigo-700'
-                        : 'bg-gray-100 text-gray-700'
-                    }`}
-                    title="Alinhar à esquerda"
-                  >
-                    <AlignLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleFooterAlignmentChange('center')}
-                    className={`p-2 rounded ${
-                      documentConfig.footer.alignment === 'center'
-                        ? 'bg-indigo-100 text-indigo-700'
-                        : 'bg-gray-100 text-gray-700'
-                    }`}
-                    title="Centralizar"
-                  >
-                    <AlignCenter className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => handleFooterAlignmentChange('right')}
-                    className={`p-2 rounded ${
-                      documentConfig.footer.alignment === 'right'
-                        ? 'bg-indigo-100 text-indigo-700'
-                        : 'bg-gray-100 text-gray-700'
-                    }`}
-                    title="Alinhar à direita"
-                  >
-                    <AlignRight className="w-4 h-4" />
-                  </button>
-                </div>
-                <RichTextEditor
-                  content={documentConfig.footer.content}
-                  onChange={handleFooterContentChange}
-                />
-              </div>
             </div>
           </div>
+        </form>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <h2 className="text-xl font-semibold mb-4">Cabeçalho e Rodapé dos Documentos</h2>
+        
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Alinhamento do Cabeçalho
+          </label>
+          <select
+            value={documentConfig.header.alignment}
+            onChange={handleHeaderAlignmentChange}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+          >
+            <option value="left">Esquerda</option>
+            <option value="center">Centro</option>
+            <option value="right">Direita</option>
+          </select>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Conteúdo do Cabeçalho (HTML)
+          </label>
+          <textarea
+            value={documentConfig.header.content}
+            onChange={handleHeaderContentChange}
+            rows={10}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 font-mono text-sm"
+          />
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Prévia do Cabeçalho
+          </label>
+          <div
+            className="border rounded-md p-4 bg-gray-50"
+            dangerouslySetInnerHTML={{ __html: documentConfig.header.content }}
+          />
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            onClick={resetToDefault}
+            className="bg-gray-600 text-white px-4 py-2 rounded-md hover:bg-gray-700"
+          >
+            Restaurar Padrão
+          </button>
         </div>
       </div>
     </div>

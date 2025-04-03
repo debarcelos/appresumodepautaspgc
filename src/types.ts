@@ -6,7 +6,7 @@ export interface Agenda {
   isFinished: boolean;
 }
 
-export interface Process {
+export type Process = {
   id: string;
   agendaId: string;
   counselorName: string;
@@ -20,7 +20,20 @@ export interface Process {
   hasViewVote: boolean;
   viewVoteSummary: string;
   mpcSystemManifest: string;
-}
+  pgcModifiedManifest: string;
+  isPgcModified: boolean;
+  position: number;
+  additionalNotes: string;
+  procuradorContas: string;
+  observations: string;
+  type: string;
+  number: string;
+  sessionType: string;
+  sessionNumber: number;
+  vote: string;
+  created_at: string;
+  updated_at: string;
+};
 
 export interface User {
   id: string;

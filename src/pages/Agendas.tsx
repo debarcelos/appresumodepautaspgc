@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store';
-import { Dialog } from '@headlessui/react';
 import { Plus, Edit, Trash2, Download, Search, ClipboardList, CheckCircle2, RefreshCcw, Loader2 } from 'lucide-react';
-import { exportToPDF, exportToExcel, exportToWord } from '../utils/exportUtils';
+import { Dialog } from '@headlessui/react';
+import { Agenda } from '../types';
+import { exportToWord, exportToExcel } from '../utils/exportUtils';
 
 function Agendas() {
   const { 
@@ -19,15 +20,17 @@ function Agendas() {
   } = useStore();
 
   const [isOpen, setIsOpen] = useState(false);
-  const [editingAgenda, setEditingAgenda] = useState(null);
+  const [editingAgenda, setEditingAgenda] = useState<Agenda | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [finishConfirmOpen, setFinishConfirmOpen] = useState(false);
-  const [agendaToFinish, setAgendaToFinish] = useState(null);
+  const [agendaToFinish, setAgendaToFinish] = useState<Agenda | null>(null);
   const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
-  const [agendaToReopen, setAgendaToReopen] = useState(null);
+  const [agendaToReopen, setAgendaToReopen] = useState<Agenda | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [agendaToDelete, setAgendaToDelete] = useState(null);
+  const [agendaToDelete, setAgendaToDelete] = useState<Agenda | null>(null);
+  const [exportFormat, setExportFormat] = useState<'docx' | 'xlsx'>('docx');
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     loadInitialData().catch(error => {
@@ -63,17 +66,17 @@ function Agendas() {
     agenda.type.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const form = e.target;
+    const form = e.currentTarget;
     const formData = new FormData(form);
     
     try {
-      const agendaData = {
+      const agendaData: Agenda = {
         id: editingAgenda?.id || crypto.randomUUID(),
-        type: formData.get('type'),
-        number: formData.get('number'),
-        date: formData.get('date'),
+        type: formData.get('type') as string,
+        number: formData.get('number') as string,
+        date: formData.get('date') as string,
         isFinished: editingAgenda?.isFinished || false,
       };
 
@@ -90,36 +93,48 @@ function Agendas() {
     }
   };
 
-  const handleExport = async (agenda, format) => {
+  const handleExport = async (agenda: Agenda) => {
     if (!agenda.isFinished) {
       setErrorMessage('Antes de exportar é preciso finalizar a pauta.');
       return;
     }
 
-    const agendaProcesses = processes.filter(p => p.agendaId === agenda.id);
-    
-    if (format === 'pdf') {
-      exportToPDF(agenda, agendaProcesses);
-    } else if (format === 'excel') {
-      exportToExcel(agenda, agendaProcesses);
-    } else {
-      await exportToWord(agenda, agendaProcesses);
+    setIsExporting(true);
+    try {
+      const agendaProcesses = processes
+        .filter(p => p.agendaId === agenda.id)
+        .sort((a, b) => (a.position || 0) - (b.position || 0));
+      
+      if (exportFormat === 'docx') {
+        await exportToWord(agenda, agendaProcesses);
+      } else if (exportFormat === 'xlsx') {
+        exportToExcel(agenda, agendaProcesses);
+      }
+    } catch (error) {
+      console.error('Erro ao exportar:', error);
+      setErrorMessage(error instanceof Error ? error.message : 'Erro ao exportar a pauta. Por favor, tente novamente.');
+    } finally {
+      setIsExporting(false);
     }
   };
 
-  const handleFinishAgenda = (agenda) => {
+  const handleFinishAgenda = (agenda: Agenda) => {
     setAgendaToFinish(agenda);
     setFinishConfirmOpen(true);
   };
 
-  const handleReopenAgenda = (agenda) => {
+  const handleReopenAgenda = (agenda: Agenda) => {
     setAgendaToReopen(agenda);
     setReopenDialogOpen(true);
   };
 
-  const handleDeleteClick = (agenda) => {
+  const handleDeleteAgenda = (agenda: Agenda) => {
     setAgendaToDelete(agenda);
     setDeleteDialogOpen(true);
+  };
+
+  const handleFormatChange = (format: 'docx' | 'xlsx') => {
+    setExportFormat(format);
   };
 
   const handleDeleteConfirm = async () => {
@@ -258,7 +273,7 @@ function Agendas() {
                           <Edit className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={() => handleDeleteClick(agenda)}
+                          onClick={() => handleDeleteAgenda(agenda)}
                           className="text-red-600 hover:text-red-900"
                           title="Excluir pauta"
                         >
@@ -281,12 +296,25 @@ function Agendas() {
                             <CheckCircle2 className="h-4 w-4" />
                           </button>
                         )}
+                        <select
+                          value={exportFormat}
+                          onChange={(e) => handleFormatChange(e.target.value as 'docx' | 'xlsx')}
+                          className="text-sm border rounded-md px-2 py-1"
+                        >
+                          <option value="docx">Word</option>
+                          <option value="xlsx">Excel</option>
+                        </select>
                         <button
-                          onClick={() => handleExport(agenda, 'pdf')}
+                          onClick={() => handleExport(agenda)}
                           className="text-gray-600 hover:text-gray-900"
                           title="Exportar pauta"
+                          disabled={isExporting}
                         >
-                          <Download className="h-4 w-4" />
+                          {isExporting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Download className="h-4 w-4" />
+                          )}
                         </button>
                       </div>
                     </td>

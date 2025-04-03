@@ -1,319 +1,630 @@
-import { jsPDF } from 'jspdf';
-import * as XLSX from 'xlsx';
-import { format } from 'date-fns';
+import { Document, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel, UnderlineType, TabStopType } from 'docx';
+import { saveAs } from 'file-saver';
 import { Agenda, Process } from '../types';
-import { useStore } from '../store';
+import * as XLSX from 'xlsx';
+import { parse, HTMLElement, TextNode } from 'node-html-parser';
 
-const loadImage = async (url: string): Promise<HTMLImageElement> => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = (error) => {
-      console.error('Error loading image:', error);
-      // Resolve without image instead of rejecting
-      resolve(null);
-    };
-    img.src = url;
+// Interface para estilo inline do HTML
+interface InlineStyle {
+  backgroundColor?: string;
+}
+
+// Função para converter HTML em elementos docx preservando formatação
+const htmlToDocxElements = (html: string): Paragraph[] => {
+  if (!html) return [new Paragraph({ 
+    text: 'Não informado', 
+    alignment: AlignmentType.JUSTIFIED,
+    spacing: { after: 240 }
+  })];
+  
+  const root = parse(html);
+  const elements: Paragraph[] = [];
+  
+  const processNode = (node: HTMLElement | TextNode): TextRun | TextRun[] | null => {
+    if (node.nodeType === 3) { // Text node
+      const textNode = node as TextNode;
+      const parentElement = textNode.parentNode as HTMLElement;
+      const style = parentElement.getAttribute('style');
+      const inlineStyle: InlineStyle = {};
+      
+      if (style) {
+        const bgColorMatch = style.match(/background-color:\s*([^;]+)/);
+        if (bgColorMatch) {
+          inlineStyle.backgroundColor = bgColorMatch[1];
+        }
+      }
+      
+      return new TextRun({
+        text: textNode.text,
+        bold: parentElement.tagName === 'STRONG' || parentElement.tagName === 'B',
+        italics: parentElement.tagName === 'I' || parentElement.tagName === 'EM',
+        underline: parentElement.tagName === 'U' ? { type: UnderlineType.SINGLE } : undefined,
+        highlight: inlineStyle.backgroundColor ? 'yellow' : undefined,
+        color: '000000',
+        size: 22 // 11pt
+      });
+    }
+    
+    if (node.nodeType === 1) { // Element node
+      const element = node as HTMLElement;
+      if (element.tagName === 'P' || element.tagName === 'DIV') {
+        const children = element.childNodes
+          .map(child => processNode(child as HTMLElement | TextNode))
+          .filter((child): child is TextRun | TextRun[] => child !== null)
+          .flat();
+          
+        if (children.length > 0) {
+          return children;
+        }
+      }
+      
+      return element.childNodes
+        .map(child => processNode(child as HTMLElement | TextNode))
+        .filter((child): child is TextRun | TextRun[] => child !== null)
+        .flat();
+    }
+    
+    return null;
+  };
+  
+  root.childNodes.forEach(node => {
+    const processed = processNode(node as HTMLElement | TextNode);
+    if (Array.isArray(processed)) {
+      elements.push(new Paragraph({ 
+        children: processed, 
+        alignment: AlignmentType.JUSTIFIED,
+        spacing: { after: 240 }
+      }));
+    } else if (processed instanceof TextRun) {
+      elements.push(new Paragraph({ 
+        children: [processed], 
+        alignment: AlignmentType.JUSTIFIED,
+        spacing: { after: 240 }
+      }));
+    }
   });
+  
+  return elements.length > 0 ? elements : [new Paragraph({ 
+    text: 'Não informado', 
+    alignment: AlignmentType.JUSTIFIED,
+    spacing: { after: 240 }
+  })];
 };
 
-const addHeaderToPDF = async (doc: jsPDF, headerContent: string, alignment: 'left' | 'center' | 'right') => {
-  try {
-    let yPos = 20;
-    const pageWidth = doc.internal.pageSize.width;
+// Função auxiliar para gerar o sumário agrupado por conselheiro
+const gerarSumarioProcessos = (processes: Process[]): Paragraph[] => {
+  // Agrupar processos por conselheiro
+  const processosPorConselheiro: { [key: string]: Process[] } = {};
+  
+  processes.forEach(process => {
+    const conselheiro = process.counselorName || 'Sem Conselheiro';
+    if (!processosPorConselheiro[conselheiro]) {
+      processosPorConselheiro[conselheiro] = [];
+    }
+    processosPorConselheiro[conselheiro].push(process);
+  });
+  
+  const paragrafos: Paragraph[] = [];
+  let paginaAtual = 4; // Começar na página 4 (assumindo que o sumário ocupe 3 páginas)
+  
+  // Para cada conselheiro, criar um item de sumário
+  Object.keys(processosPorConselheiro).forEach(conselheiro => {
+    // Adicionar nome do conselheiro
+    paragrafos.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: conselheiro.toUpperCase(),
+            bold: true,
+            size: 24, // 12pt = 24 half-points
+            font: 'Arial'
+          }),
+          new TextRun({
+            text: `\t${paginaAtual}`,
+            size: 24,
+            font: 'Arial'
+          })
+        ],
+        tabStops: [
+          {
+            type: TabStopType.RIGHT,
+            position: 9000, // Posição à direita para o número da página
+          }
+        ]
+      })
+    );
     
-    // Extract image URL from header content if it exists
-    const imgMatch = headerContent.match(/src="([^"]+)"/);
-    if (imgMatch) {
-      const imgUrl = imgMatch[1];
+    // Adicionar cada processo deste conselheiro
+    processosPorConselheiro[conselheiro].forEach(process => {
+      // Incrementar página para cada processo (estimativa)
+      paragrafos.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `${process.position} - `,
+              size: 22, // 11pt = 22 half-points
+              font: 'Arial'
+            }),
+            new TextRun({
+              text: process.processNumber,
+              size: 22,
+              font: 'Arial'
+            }),
+            new TextRun({
+              text: `\t${paginaAtual}`,
+              size: 22,
+              font: 'Arial'
+            })
+          ],
+          tabStops: [
+            {
+              type: TabStopType.RIGHT,
+              position: 9000,
+            }
+          ],
+          spacing: {
+            after: 120
+          }
+        })
+      );
       
-      try {
-        const img = await loadImage(imgUrl);
-        
-        // Only add image if it loaded successfully
-        if (img) {
-          // Calculate image dimensions and position
-          const imgWidth = 40;
-          const imgHeight = 40;
-          const imgX = alignment === 'center' ? (pageWidth - imgWidth) / 2 : 
-                      alignment === 'right' ? pageWidth - imgWidth - 20 : 20;
-          
-          // Add image to PDF
-          doc.addImage(img, 'PNG', imgX, yPos, imgWidth, imgHeight);
-          yPos += imgHeight + 8; // Add some spacing after the image
-        }
-      } catch (error) {
-        console.error('Failed to add image to PDF:', error);
-        // Continue without the image
-      }
+      // Incrementar a página para o próximo processo
+      paginaAtual++;
+    });
+    
+    // Adicionar uma linha em branco após cada grupo de conselheiro
+    paragrafos.push(new Paragraph({ spacing: { after: 240 } }));
+  });
+  
+  return paragrafos;
+};
+
+export const exportToWord = async (agenda: Agenda, processes: Process[]) => {
+  try {
+    // Validar dados obrigatórios
+    if (!agenda.number || !agenda.type || !agenda.date) {
+      throw new Error('Dados básicos da pauta incompletos. Verifique o número, tipo e data.');
     }
 
-    // Add text lines with proper formatting
-    const lines = [
-      'MINISTÉRIO PÚBLICO DE CONTAS DO ESTADO DE GOIÁS',
-      'Controle Externo da Administração Pública Estadual'
-    ];
+    if (processes.length === 0) {
+      throw new Error('Não há processos cadastrados nesta pauta.');
+    }
 
-    // Set font for header text
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-
-    lines.forEach((line) => {
-      const textWidth = doc.getTextWidth(line);
-      const textX = alignment === 'center' ? (pageWidth - textWidth) / 2 : 
-                   alignment === 'right' ? pageWidth - textWidth - 20 : 20;
-      
-      doc.text(line, textX, yPos);
-      yPos += 6;
-    });
-
-    return yPos + 10; // Return the new Y position with some padding
-  } catch (error) {
-    console.error('Error adding header:', error);
-    // Continue without header but don't fail the export
-    return 20;
-  }
-};
-
-export const exportToPDF = async (agenda: Agenda, processes: Process[]) => {
-  const { documentConfig } = useStore.getState();
-  const doc = new jsPDF();
-  
-  try {
-    // Add header and get the new Y position
-    let yPos = await addHeaderToPDF(doc, documentConfig.header.content, documentConfig.header.alignment);
-
-    // Add title
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
-    const titleText = `Pauta ${agenda.type} nº ${agenda.number}`;
-    const titleWidth = doc.getTextWidth(titleText);
-    const pageWidth = doc.internal.pageSize.width;
-    doc.text(titleText, (pageWidth - titleWidth) / 2, yPos);
-    yPos += 8;
-
-    // Add date
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(12);
-    const dateText = `Data: ${format(new Date(agenda.date), 'dd/MM/yyyy')}`;
-    const dateWidth = doc.getTextWidth(dateText);
-    doc.text(dateText, (pageWidth - dateWidth) / 2, yPos);
-    yPos += 15;
-
-    // Add processes
-    processes.forEach((process, index) => {
-      // Check if we need a new page
-      if (yPos > 260) {
-        doc.addPage();
-        yPos = 20;
-        addHeaderToPDF(doc, documentConfig.header.content, documentConfig.header.alignment)
-          .then(newYPos => { yPos = newYPos; });
-      }
-
-      // Process number
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.text(`Processo ${index + 1}: ${process.processNumber}`, 20, yPos);
-      yPos += 8;
-
-      // Process details
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
-
-      const addText = (text: string, label: string) => {
-        if (!text) return; // Skip empty fields
-        
-        const lines = doc.splitTextToSize(`${label}: ${text}`, 170);
-        lines.forEach((line: string) => {
-          if (yPos > 260) {
-            doc.addPage();
-            yPos = 20;
-            addHeaderToPDF(doc, documentConfig.header.content, documentConfig.header.alignment)
-              .then(newYPos => { yPos = newYPos; });
+    // Criar documento com seções
+    const doc = new Document({
+      styles: {
+        default: {
+          document: {
+            run: {
+              font: 'Arial'
+            },
+            paragraph: {
+              alignment: AlignmentType.JUSTIFIED
+            }
           }
-          doc.text(line, 20, yPos);
-          yPos += 5;
-        });
-        yPos += 2;
-      };
+        }
+      },
+      sections: [
+        {
+          children: [
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: 'MINISTÉRIO PÚBLICO DE CONTAS DO ESTADO DE GOIÁS',
+                  bold: true,
+                  size: 28, // 14pt = 28 half-points
+                  font: 'Arial',
+                  color: '000000'
+                })
+              ],
+              alignment: AlignmentType.CENTER,
+              spacing: {
+                after: 200
+              }
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: 'Controle Externo da Administração Pública Estadual',
+                  bold: true,
+                  size: 28, // 14pt = 28 half-points
+                  font: 'Arial',
+                  color: '000000'
+                })
+              ],
+              alignment: AlignmentType.CENTER,
+              spacing: {
+                after: 400
+              }
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `Pauta da Sessão ${agenda.type.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')} nº ${agenda.number}`,
+                  bold: true,
+                  size: 32, // 16pt = 32 half-points
+                  font: 'Arial',
+                  color: '000000'
+                })
+              ],
+              alignment: AlignmentType.CENTER,
+              spacing: {
+                after: 200
+              }
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: new Date(agenda.date + 'T00:00:00').toLocaleDateString('pt-BR'),
+                  bold: true,
+                  size: 24, // 12pt = 24 half-points
+                  font: 'Arial',
+                  color: '000000'
+                })
+              ],
+              alignment: AlignmentType.CENTER,
+              spacing: {
+                after: 400
+              }
+            }),
+            
+            // Sumário - título
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: 'SUMÁRIO',
+                  bold: true,
+                  size: 28, // 14pt = 28 half-points
+                  font: 'Arial',
+                  color: '000000'
+                })
+              ],
+              alignment: AlignmentType.CENTER,
+              spacing: {
+                after: 240
+              }
+            }),
+            
+            // Gerar sumário agrupando por conselheiro
+            ...gerarSumarioProcessos(processes),
+            
+            // Página em branco após o sumário
+            new Paragraph({
+              children: [new TextRun({ text: '', break: 1 })]
+            })
+          ]
+        },
+        // Seções para cada processo
+        ...processes.map((process) => {
+          const processChildren = [
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `${process.position} - Processo: ${process.processNumber}`,
+                  bold: true,
+                  font: 'Arial',
+                  size: 28, // 14pt = 28 half-points
+                  color: 'FFFFFF' // Texto branco
+                })
+              ],
+              heading: HeadingLevel.HEADING_2,
+              spacing: {
+                before: 400,
+                after: 200
+              },
+              shading: {
+                type: 'clear',
+                fill: '4169E1', // Azul Royal
+                color: 'auto'
+              },
+              alignment: AlignmentType.JUSTIFIED
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `Conselheiro: `,
+                  bold: true,
+                  font: 'Arial',
+                  size: 24, // 12pt
+                  color: '000000'
+                }),
+                new TextRun({
+                  text: process.counselorName || 'Não informado',
+                  font: 'Arial',
+                  size: 22, // 11pt
+                  color: '000000'
+                })
+              ],
+              alignment: AlignmentType.JUSTIFIED,
+              spacing: { after: 240 }
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `Tipo: `,
+                  bold: true,
+                  font: 'Arial',
+                  size: 24, // 12pt
+                  color: '000000'
+                }),
+                new TextRun({
+                  text: process.processType || 'Não informado',
+                  font: 'Arial',
+                  size: 22, // 11pt
+                  color: '000000'
+                })
+              ],
+              alignment: AlignmentType.JUSTIFIED,
+              spacing: { after: 240 }
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `Interessados: `,
+                  bold: true,
+                  font: 'Arial',
+                  size: 24, // 12pt
+                  color: '000000'
+                }),
+                new TextRun({
+                  text: process.stakeholders || 'Não informado',
+                  font: 'Arial',
+                  size: 22, // 11pt
+                  color: '000000'
+                })
+              ],
+              alignment: AlignmentType.JUSTIFIED,
+              spacing: { after: 240 }
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: 'Ementa:',
+                  bold: true,
+                  font: 'Arial',
+                  size: 24, // 12pt
+                  color: '000000'
+                })
+              ],
+              heading: HeadingLevel.HEADING_3,
+              alignment: AlignmentType.JUSTIFIED,
+              spacing: { after: 0 }
+            })
+          ];
+          
+          // Adicionar conteúdo da Ementa
+          processChildren.push(...htmlToDocxElements(process.summary));
 
-      addText(process.counselorName, 'Conselheiro');
-      addText(process.processType, 'Tipo');
-      addText(process.stakeholders, 'Interessados');
-      addText(process.summary, 'Ementa');
-      addText(process.voteType, 'Tipo de Voto');
-      
-      if (process.voteType !== 'não houve análise de mérito pelo MPC') {
-        addText(process.mpcOpinionSummary, 'Parecer do MPC');
-      }
-      
-      addText(process.tceReportSummary, 'Relatório/Voto TCE');
-      
-      if (process.hasViewVote) {
-        addText(process.viewVoteSummary, 'Voto Vista');
-      }
-      
-      if (process.mpcSystemManifest) {
-        addText(process.mpcSystemManifest, 'Manifestação do MPC');
-      }
-      
-      yPos += 8; // Add spacing between processes
+          // Adicionar Tipo de Voto
+          if (process.voteType) {
+            processChildren.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'Tipo de Voto:',
+                    bold: true,
+                    font: 'Arial',
+                    size: 24, // 12pt
+                    color: '000000'
+                  })
+                ],
+                heading: HeadingLevel.HEADING_3,
+                alignment: AlignmentType.JUSTIFIED,
+                spacing: { after: 0 }
+              })
+            );
+            processChildren.push(...htmlToDocxElements(process.voteType));
+          }
+
+          // Adicionar Observações se existir
+          if (process.observations) {
+            processChildren.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'Observações:',
+                    bold: true,
+                    font: 'Arial',
+                    size: 24, // 12pt
+                    color: '000000'
+                  })
+                ],
+                heading: HeadingLevel.HEADING_3,
+                alignment: AlignmentType.JUSTIFIED,
+                spacing: { after: 0 }
+              })
+            );
+            processChildren.push(...htmlToDocxElements(process.observations));
+          }
+
+          // Adicionar Procurador de Contas
+          if (process.procuradorContas) {
+            processChildren.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'Procurador de Contas:',
+                    bold: true,
+                    font: 'Arial',
+                    size: 24, // 12pt
+                    color: '000000'
+                  })
+                ],
+                heading: HeadingLevel.HEADING_3,
+                alignment: AlignmentType.JUSTIFIED,
+                spacing: { after: 0 }
+              }),
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: process.procuradorContas || 'Não informado',
+                    font: 'Arial',
+                    size: 22, // 11pt
+                    color: '000000'
+                  })
+                ],
+                alignment: AlignmentType.JUSTIFIED,
+                spacing: { after: 240 }
+              })
+            );
+          }
+
+          // Adicionar Parecer do MPC
+          if (process.mpcOpinionSummary) {
+            processChildren.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'Parecer do MPC:',
+                    bold: true,
+                    font: 'Arial',
+                    size: 24, // 12pt
+                    color: '000000'
+                  })
+                ],
+                heading: HeadingLevel.HEADING_3,
+                alignment: AlignmentType.JUSTIFIED,
+                spacing: { after: 0 }
+              })
+            );
+            processChildren.push(...htmlToDocxElements(process.mpcOpinionSummary));
+          }
+
+          // Adicionar Relatório/Voto TCE
+          processChildren.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: 'Relatório/Voto TCE:',
+                  bold: true,
+                  font: 'Arial',
+                  size: 24, // 12pt
+                  color: '000000'
+                })
+              ],
+              heading: HeadingLevel.HEADING_3,
+              alignment: AlignmentType.JUSTIFIED,
+              spacing: { after: 0 }
+            })
+          );
+          processChildren.push(...htmlToDocxElements(process.tceReportSummary));
+
+          // Adicionar Voto Vista se necessário
+          if (process.hasViewVote && process.viewVoteSummary) {
+            processChildren.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'Voto Vista:',
+                    bold: true,
+                    font: 'Arial',
+                    size: 24, // 12pt
+                    color: '000000'
+                  })
+                ],
+                heading: HeadingLevel.HEADING_3,
+                alignment: AlignmentType.JUSTIFIED,
+                spacing: { after: 0 }
+              })
+            );
+            processChildren.push(...htmlToDocxElements(process.viewVoteSummary));
+          }
+
+          // Adicionar Manifestação do Sistema do MPC se existir
+          if (process.mpcSystemManifest) {
+            processChildren.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'Manifestação do Sistema do MPC:',
+                    bold: true,
+                    font: 'Arial',
+                    size: 24, // 12pt
+                    color: '000000'
+                  })
+                ],
+                heading: HeadingLevel.HEADING_3,
+                alignment: AlignmentType.JUSTIFIED,
+                spacing: { after: 0 }
+              })
+            );
+            processChildren.push(...htmlToDocxElements(process.mpcSystemManifest));
+          }
+
+          // Adicionar Manifestação Modificada pelo PGC se existir
+          if (process.isPgcModified && process.pgcModifiedManifest) {
+            processChildren.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'Manifestação Modificada pelo PGC:',
+                    bold: true,
+                    font: 'Arial',
+                    size: 24, // 12pt
+                    color: '000000'
+                  })
+                ],
+                heading: HeadingLevel.HEADING_3,
+                alignment: AlignmentType.JUSTIFIED,
+                spacing: { after: 0 }
+              })
+            );
+            processChildren.push(...htmlToDocxElements(process.pgcModifiedManifest));
+          }
+
+          // Adicionar Anotações Adicionais se existir
+          if (process.additionalNotes) {
+            processChildren.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'Anotações Adicionais:',
+                    bold: true,
+                    font: 'Arial',
+                    size: 24, // 12pt
+                    color: '000000'
+                  })
+                ],
+                heading: HeadingLevel.HEADING_3,
+                alignment: AlignmentType.JUSTIFIED,
+                spacing: { after: 0 }
+              })
+            );
+            processChildren.push(...htmlToDocxElements(process.additionalNotes));
+          }
+
+          return {
+            children: processChildren
+          };
+        })
+      ]
     });
 
-    doc.save(`pauta_${agenda.number}_${format(new Date(agenda.date), 'dd-MM-yyyy')}.pdf`);
+    // Gerar o documento usando o método apropriado para o navegador
+    const blob = await Packer.toBlob(doc);
+    saveAs(blob, `Pauta_${agenda.number}_${new Date(agenda.date + 'T00:00:00').toLocaleDateString('pt-BR')}.docx`);
   } catch (error) {
-    console.error('Error generating PDF:', error);
-    throw new Error('Ocorreu um erro ao gerar o PDF. Por favor, tente novamente.');
+    console.error('Erro ao gerar documento:', error);
+    throw new Error('Não foi possível gerar o documento. Verifique se todos os dados estão preenchidos corretamente: ' + (error instanceof Error ? error.message : ''));
   }
 };
 
 export const exportToExcel = (agenda: Agenda, processes: Process[]) => {
-  const processesData = processes.map(process => ({
+  const ws = XLSX.utils.json_to_sheet(processes.map(process => ({
     'Número do Processo': process.processNumber,
-    'Conselheiro': process.counselorName,
-    'Tipo de Processo': process.processType,
+    'Relator': process.counselorName,
+    'Tipo': process.processType,
     'Interessados': process.stakeholders,
     'Ementa': process.summary,
-    'Tipo de Voto': process.voteType,
-    'Parecer do MPC': process.voteType !== 'não houve análise de mérito pelo MPC' ? process.mpcOpinionSummary : '',
+    'Parecer do MPC': process.mpcOpinionSummary || '',
     'Relatório/Voto TCE': process.tceReportSummary,
-    'Teve Voto Vista': process.hasViewVote ? 'Sim' : 'Não',
     'Voto Vista': process.hasViewVote ? process.viewVoteSummary : '',
-    'Manifestação do MPC': process.mpcSystemManifest || '',
-  }));
+    'Proposta de manifestação do MPC': process.mpcSystemManifest || '',
+    'Manifestação registrada pelo PGC': process.pgcModifiedManifest || ''
+  })));
 
   const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(processesData);
-
-  // Add header with agenda information
-  XLSX.utils.sheet_add_aoa(ws, [
-    [`Pauta ${agenda.type} nº ${agenda.number}`],
-    [`Data: ${format(new Date(agenda.date), 'dd/MM/yyyy')}`],
-    [''],  // Empty row for spacing
-  ], { origin: 'A1' });
-
-  // Adjust column widths
-  const maxWidth = 50;
-  const colWidths = Object.keys(processesData[0] || {}).map(() => ({ wch: maxWidth }));
-  ws['!cols'] = colWidths;
-
   XLSX.utils.book_append_sheet(wb, ws, 'Processos');
-  XLSX.writeFile(wb, `pauta_${agenda.number}_${format(new Date(agenda.date), 'dd-MM-yyyy')}.xlsx`);
-};
-
-export const exportToWord = (agenda: Agenda, processes: Process[]) => {
-  const { documentConfig } = useStore.getState();
   
-  // Create HTML content with proper styling
-  let content = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <style>
-        @page { margin: 2cm; }
-        body { 
-          font-family: Arial, sans-serif;
-          line-height: 1.5;
-          margin: 0;
-          padding: 0;
-        }
-        .header { 
-          text-align: ${documentConfig.header.alignment};
-          margin-bottom: 20px;
-        }
-        .header img { 
-          width: 40px;
-          height: 40px;
-          object-fit: contain;
-        }
-        .header p { 
-          font-family: Arial;
-          font-size: 10pt;
-          font-weight: bold;
-          margin: 5px 0;
-        }
-        .title { 
-          text-align: center;
-          font-size: 14pt;
-          font-weight: bold;
-          margin: 20px 0;
-          font-family: Arial;
-        }
-        .date { 
-          text-align: center;
-          margin-bottom: 20px;
-          font-family: Arial;
-          font-size: 12pt;
-        }
-        .process { 
-          margin-bottom: 20px;
-          page-break-inside: avoid;
-        }
-        .process-header { 
-          font-family: Arial;
-          font-weight: bold;
-          font-size: 11pt;
-          margin-bottom: 10px;
-        }
-        .process-field { 
-          margin-bottom: 5px;
-          font-family: Arial;
-          font-size: 10pt;
-        }
-        .label { 
-          font-weight: bold;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        ${documentConfig.header.content}
-      </div>
-      <div class="title">Pauta ${agenda.type} nº ${agenda.number}</div>
-      <div class="date">Data: ${format(new Date(agenda.date), 'dd/MM/yyyy')}</div>
-  `;
-
-  processes.forEach((process, index) => {
-    content += `
-      <div class="process">
-        <div class="process-header">Processo ${index + 1}: ${process.processNumber}</div>
-        <div class="process-field"><span class="label">Conselheiro:</span> ${process.counselorName}</div>
-        <div class="process-field"><span class="label">Tipo:</span> ${process.processType}</div>
-        <div class="process-field"><span class="label">Interessados:</span> ${process.stakeholders}</div>
-        <div class="process-field"><span class="label">Ementa:</span> ${process.summary}</div>
-        <div class="process-field"><span class="label">Tipo de Voto:</span> ${process.voteType}</div>
-    `;
-
-    if (process.voteType !== 'não houve análise de mérito pelo MPC') {
-      content += `<div class="process-field"><span class="label">Parecer do MPC:</span> ${process.mpcOpinionSummary}</div>`;
-    }
-
-    content += `<div class="process-field"><span class="label">Relatório/Voto TCE:</span> ${process.tceReportSummary}</div>`;
-
-    if (process.hasViewVote) {
-      content += `<div class="process-field"><span class="label">Voto Vista:</span> ${process.viewVoteSummary}</div>`;
-    }
-
-    if (process.mpcSystemManifest) {
-      content += `<div class="process-field"><span class="label">Manifestação do MPC:</span> ${process.mpcSystemManifest}</div>`;
-    }
-
-    content += '</div>';
-  });
-
-  content += `
-    </body>
-    </html>
-  `;
-
-  // Create a Blob with the HTML content
-  const blob = new Blob([content], { type: 'application/msword' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `pauta_${agenda.number}_${format(new Date(agenda.date), 'dd-MM-yyyy')}.doc`;
-  link.click();
-  URL.revokeObjectURL(url);
+  XLSX.writeFile(wb, `pauta_${agenda.number}_${new Date(agenda.date + 'T00:00:00').toLocaleDateString('pt-BR')}.xlsx`);
 };
