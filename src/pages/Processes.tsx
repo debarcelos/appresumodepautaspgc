@@ -810,43 +810,33 @@ function Processes() {
           </div>
         </div>
       ) : (
-        <div className="bg-white shadow-sm rounded-lg">
+        <div className="bg-white shadow-sm rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full table-fixed divide-y divide-gray-200">
-              <colgroup>
-                <col className="w-[5%]" /> {/* Posição */}
-                <col className="w-[8%]" /> {/* Pauta */}
-                <col className="w-[18%]" /> {/* Número */}
-                <col className="w-[15%]" /> {/* Conselheiro */}
-                <col className="w-[15%]" /> {/* Procurador */}
-                <col className="w-[15%]" /> {/* Tipo */}
-                <col className="w-[14%]" /> {/* Tipo de Voto */}
-                <col className="w-[10%]" /> {/* Ações */}
-              </colgroup>
+            <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     Pos.
                   </th>
-                  <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     Pauta
                   </th>
-                  <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     Número
                   </th>
-                  <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     Conselheiro
                   </th>
-                  <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     Procurador
                   </th>
-                  <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     Tipo
                   </th>
-                  <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     Tipo de Voto
                   </th>
-                  <th scope="col" className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  <th scope="col" className="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     Ações
                   </th>
                 </tr>
@@ -862,12 +852,12 @@ function Processes() {
                         ${agenda?.isFinished ? 'bg-emerald-50' : 'bg-amber-50'}
                       `}
                     >
-                      <td className="px-3 py-4 text-sm text-gray-900">
+                      <td className="px-4 sm:px-6 py-4 text-sm text-gray-900">
                         <div className="truncate">
                           {process.position || '-'}
                         </div>
                       </td>
-                      <td className="px-3 py-4 text-sm text-gray-900">
+                      <td className="px-4 sm:px-6 py-4 text-sm text-gray-900">
                         <div className="flex items-center space-x-1">
                           <span className="truncate">{agenda ? agenda.number : '-'}</span>
                           {agenda?.isFinished && (
@@ -875,32 +865,32 @@ function Processes() {
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-4 text-sm text-gray-900">
+                      <td className="px-4 sm:px-6 py-4 text-sm text-gray-900">
                         <div className="truncate" title={process.processNumber}>
                           {process.processNumber}
                         </div>
                       </td>
-                      <td className="px-3 py-4 text-sm text-gray-900">
+                      <td className="px-4 sm:px-6 py-4 text-sm text-gray-900">
                         <div className="truncate" title={process.counselorName}>
                           {process.counselorName}
                         </div>
                       </td>
-                      <td className="px-3 py-4 text-sm text-gray-900">
+                      <td className="px-4 sm:px-6 py-4 text-sm text-gray-900">
                         <div className="truncate" title={process.procuradorContas}>
                           {process.procuradorContas ? process.procuradorContas.toUpperCase() : '-'}
                         </div>
                       </td>
-                      <td className="px-3 py-4 text-sm text-gray-900">
+                      <td className="px-4 sm:px-6 py-4 text-sm text-gray-900">
                         <div className="truncate" title={process.processType}>
                           {process.processType}
                         </div>
                       </td>
-                      <td className="px-3 py-4 text-sm text-gray-900">
+                      <td className="px-4 sm:px-6 py-4 text-sm text-gray-900">
                         <div className="truncate" title={process.voteType}>
                           {process.voteType ? process.voteType.toUpperCase() : '-'}
                         </div>
                       </td>
-                      <td className="px-3 py-4 text-sm text-gray-900 text-right">
+                      <td className="px-4 sm:px-6 py-4 text-sm text-gray-900 text-right">
                         <div className="flex justify-end space-x-2">
                           {!agenda?.isFinished && (
                             <>
@@ -1110,7 +1100,6 @@ function Processes() {
       >
         <div className="flex min-h-screen items-center justify-center p-4">
           <Dialog.Overlay className="fixed inset-0 bg-black opacity-30" />
-
           <div className="relative bg-white rounded-lg w-[90%] max-w-6xl mx-auto p-6">
             <Dialog.Title className="text-lg font-medium text-gray-900 mb-4">
               {editingProcess ? 'Editar Processo' : 'Novo Processo'}
@@ -1235,7 +1224,16 @@ function Processes() {
                   id="voteType"
                   name="voteType"
                   value={selectedVoteType}
-                  onChange={(e) => setSelectedVoteType(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedVoteType(e.target.value);
+                    // Atualiza também o objeto editingProcess para manter os estados sincronizados
+                    if (editingProcess) {
+                      setEditingProcess({
+                        ...editingProcess,
+                        voteType: e.target.value
+                      });
+                    }
+                  }}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                   required
                 >
@@ -1282,10 +1280,15 @@ function Processes() {
                   value={editingProcess?.procuradorContas || ''}
                   onChange={(e) => {
                     if (editingProcess) {
-                      setEditingProcess({
+                      const updatedProcess = {
                         ...editingProcess,
                         procuradorContas: e.target.value
-                      });
+                      };
+                      setEditingProcess(updatedProcess);
+                      // Garantir que o selectedVoteType continue sincronizado
+                      if (updatedProcess.voteType) {
+                        setSelectedVoteType(updatedProcess.voteType);
+                      }
                     }
                   }}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
