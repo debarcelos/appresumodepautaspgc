@@ -55,6 +55,9 @@ Todas as mudanças notáveis neste projeto serão documentadas neste arquivo.
   - Títulos configurados como Arial 12pt negrito (headings)
   - Conteúdo configurado como Arial 11pt normal
   - Sumário aprimorado com agrupamento por conselheiro e links para processos
+  - Corrigidos nomes dos campos para manter consistência com a aplicação:
+    - Campo "Manifestação do Sistema do MPC" renomeado para "Proposta de manifestação do MPC"
+    - Campo "Tipo" renomeado para "Tipo de Processo"
 - Página de configurações:
   - Campos "Ementa" e "Resumo" não usam mais editor rico (TinyMCE)
   - Melhorada performance de salvamento

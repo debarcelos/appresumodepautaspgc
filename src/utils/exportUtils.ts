@@ -341,7 +341,7 @@ export const exportToWord = async (agenda: Agenda, processes: Process[]) => {
             new Paragraph({
               children: [
                 new TextRun({
-                  text: `Tipo: `,
+                  text: `Tipo de Processo: `,
                   bold: true,
                   font: 'Arial',
                   size: 24, // 12pt
@@ -536,7 +536,7 @@ export const exportToWord = async (agenda: Agenda, processes: Process[]) => {
               new Paragraph({
                 children: [
                   new TextRun({
-                    text: 'Manifestação do Sistema do MPC:',
+                    text: 'Proposta de manifestação do MPC:',
                     bold: true,
                     font: 'Arial',
                     size: 24, // 12pt
